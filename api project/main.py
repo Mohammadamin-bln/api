@@ -23,7 +23,7 @@ cur.execute("""CREATE TABLE IF NOT EXISTS all_products
             (product TEXT, price INTEGER,categorie TEXT) """)
 
 cur.execute("""CREATE TABLE IF NOT EXISTS gym_products
-            (product TEXT, price INTEGER,) """)
+            (product TEXT, price INTEGER) """)
 for item in shop:
 
     cur.execute("""INSERT INTO all_products(product,price,categorie) VALUES(?,?,?)""",
@@ -57,7 +57,7 @@ def create_product():
         cur.execute("""INSERT INTO gym_products(product.price)
                     VALUES(?,?) """, (new_product['product'], new_product['price']))
     con.commit()
-    con.close
+    con.close()
     return jsonify(new_product), 201
 
 
