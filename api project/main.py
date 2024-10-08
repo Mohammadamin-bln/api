@@ -4,17 +4,11 @@ path = "products.db"
 app = Flask(__name__)
 
 shop = [
-    {
-        "product": "gym closes",
-        "categorie": "gym",
-        "price": 2000
-    },
-    {
-        "product": "mouse",
-        "categorie": "programing",
-        "price": 1500
-    }
+{
+
+}
 ]
+categorie=[{}]
 
 con = sqlite3.connect(path)
 
@@ -22,15 +16,9 @@ cur = con.cursor()
 cur.execute("""CREATE TABLE IF NOT EXISTS all_products
             (product TEXT, price INTEGER,categorie TEXT) """)
 
-cur.execute("""CREATE TABLE IF NOT EXISTS gym_products
-            (product TEXT, price INTEGER) """)
-for item in shop:
+cur.execute("""CREATE TABLE IF NOT EXISTS categorie(  
+            id INTEGER PRIMARY KEY  AUTOINCREMENT, categorie TEXT)""") 
 
-    cur.execute("""INSERT INTO all_products(product,price,categorie) VALUES(?,?,?)""",
-                (item["product"], item["price"], item['categorie']))
-    if item['categorie'] == "gym":
-        cur.execute("""INSERT INTO gym_products(product,price) VALUES(?,?)""",
-                    (item['product'], item['price']))
 con.commit()
 con.close()
 
@@ -38,9 +26,23 @@ con.close()
 @app.route('/shop', methods=['GET'])
 def get_product():
     return jsonify(shop)
+@app.route('/shop/new/categorie',methods=["POST"])
+def create_categorie():
+    new_categorie={
+        "categorie":request.json['categorie']
+    }
+    categorie.append(new_categorie)
+    con = sqlite3.connect(path)
+
+    cur = con.cursor()
+    cur.execute("""INSERT INTO categorie(categorie)
+                 VALUES(?)""",(new_categorie['categorie'],))
+    con.commit()
+    con.close()
+    return jsonify(new_categorie),201
 
 
-@app.route('/shop/new', methods=['POST'])
+@app.route('/shop/new/product', methods=['POST'])
 def create_product():
     new_product = {
         "product": request.json['product'],
