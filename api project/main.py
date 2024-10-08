@@ -23,10 +23,17 @@ con.commit()
 con.close()
 
 
-@app.route('/shop', methods=['GET'])
+@app.route('/category/get_all', methods=['GET'])
 def get_product():
-    return jsonify(shop)
-@app.route('/shop/new/categorie',methods=["POST"])
+    con = sqlite3.connect(path)
+
+    cur = con.cursor()
+    cur.execute("""SELECT id,categorie FROM categorie """)
+    categories=cur.fetchall()
+    categories_list = [{"id": category[0], "categorie": category[1]} for category in categories] 
+    return jsonify(categories_list)
+
+@app.route('/category/create',methods=["POST"])
 def create_categorie():
     new_categorie={
         "categorie":request.json['categorie']
