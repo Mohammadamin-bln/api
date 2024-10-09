@@ -103,7 +103,7 @@ def create_categorie():
         return jsonify(new_categorie), 201  
 
 
-@app.route('/create/new/product', methods=['POST'])  
+@app.route('/product/add', methods=['POST'])  
 def create_product():  
     """  
     Create a new product  
