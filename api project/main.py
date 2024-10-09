@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 import sqlite3
+from sqlite3 import Error
 path = "products.db"
 app = Flask(__name__)
 
@@ -9,32 +10,39 @@ shop = [
 }
 ]
 categorie=[{}]
+try:
+    con = sqlite3.connect(path)  
 
-con = sqlite3.connect(path)  
+    cur = con.cursor()  
 
-cur = con.cursor()  
+    
+    cur.execute("""CREATE TABLE IF NOT EXISTS categorie(  
+                id INTEGER PRIMARY KEY AUTOINCREMENT, categorie TEXT)""")   
+    
+    cur.execute("""CREATE TABLE IF NOT EXISTS all_products  
+                (product TEXT, price INTEGER, categorie_id INTEGER,   
+                FOREIGN KEY(categorie_id) REFERENCES categorie(id)) """)  
 
- 
-cur.execute("""CREATE TABLE IF NOT EXISTS categorie(  
-            id INTEGER PRIMARY KEY AUTOINCREMENT, categorie TEXT)""")   
- 
-cur.execute("""CREATE TABLE IF NOT EXISTS all_products  
-            (product TEXT, price INTEGER, categorie_id INTEGER,   
-            FOREIGN KEY(categorie_id) REFERENCES categorie(id)) """)  
-
-con.commit()  
-con.close() 
+    con.commit() 
+except Error:
+    print(Error) 
+finally:
+    con.close() 
 
 
 @app.route('/category/get_all', methods=['GET'])
 def get_product():
-    con = sqlite3.connect(path)
+    try:
+        con = sqlite3.connect(path)
 
-    cur = con.cursor()
-    cur.execute("""SELECT id,categorie FROM categorie """)
-    categories=cur.fetchall()
-    categories_list = [{"id": category[0], "categorie": category[1]} for category in categories] 
-    return jsonify(categories_list)
+        cur = con.cursor()
+        cur.execute("""SELECT id,categorie FROM categorie """)
+        categories=cur.fetchall()
+        categories_list = [{"id": category[0], "categorie": category[1]} for category in categories] 
+
+        return jsonify(categories_list)
+    except Error:
+        print(Error)
 
 @app.route('/category/create',methods=["POST"])
 def create_categorie():
@@ -42,14 +50,18 @@ def create_categorie():
         "categorie":request.json['categorie']
     }
     categorie.append(new_categorie)
-    con = sqlite3.connect(path)
+    try:
+        con = sqlite3.connect(path)
 
-    cur = con.cursor()
-    cur.execute("""INSERT INTO categorie(categorie)
-                 VALUES(?)""",(new_categorie['categorie'],))
-    con.commit()
-    con.close()
-    return jsonify(new_categorie),201
+        cur = con.cursor()
+        cur.execute("""INSERT INTO categorie(categorie)
+                    VALUES(?)""",(new_categorie['categorie'],))
+        con.commit()
+    except Error:
+        print(Error)
+    finally:
+        con.close()
+        return jsonify(new_categorie),201
 
 
 @app.route('/new/product', methods=['POST'])  
