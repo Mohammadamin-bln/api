@@ -91,21 +91,6 @@ def create_product():
     
 
 
-@app.route('/shop/programing', methods=['GET'])
-def get_programing_product():
-    programing_product = [
-        product for product in shop if product['categorie'] == 'programing']
-
-    return jsonify(programing_product)
-
-
-@app.route('/shop/gym', methods=['GET'])
-def get_gym_product():
-    gym_product = [
-        product for product in shop if product['categorie'] == 'gym'
-    ]
-    return jsonify(gym_product)
-
 @app.route('/get/product/<string:category>', methods = ['GET'])
 def get_product_by_categorie(category):
 
@@ -121,7 +106,7 @@ def get_product_by_categorie(category):
     
 
 
-@app.route('/shop/update', methods=['PUT'])
+@app.route('/update/product', methods=['PUT'])
 def update_product():
 
     product_name = request.json['product']
