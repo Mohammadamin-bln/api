@@ -10,17 +10,20 @@ shop = [
 ]
 categorie=[{}]
 
-con = sqlite3.connect(path)
+con = sqlite3.connect(path)  
 
-cur = con.cursor()
-cur.execute("""CREATE TABLE IF NOT EXISTS all_products
-            (product TEXT, price INTEGER,categorie TEXT) """)
+cur = con.cursor()  
 
+ 
 cur.execute("""CREATE TABLE IF NOT EXISTS categorie(  
-            id INTEGER PRIMARY KEY  AUTOINCREMENT, categorie TEXT)""") 
+            id INTEGER PRIMARY KEY AUTOINCREMENT, categorie TEXT)""")   
+ 
+cur.execute("""CREATE TABLE IF NOT EXISTS all_products  
+            (product TEXT, price INTEGER, categorie_id INTEGER,   
+            FOREIGN KEY(categorie_id) REFERENCES categorie(id)) """)  
 
-con.commit()
-con.close()
+con.commit()  
+con.close() 
 
 
 @app.route('/category/get_all', methods=['GET'])
@@ -49,25 +52,31 @@ def create_categorie():
     return jsonify(new_categorie),201
 
 
-@app.route('/shop/new/product', methods=['POST'])
-def create_product():
-    new_product = {
-        "product": request.json['product'],
-        "categorie": request.json["categorie"],
-        "price": request.json['price']
-    }
-    shop.append(new_product)
-    con = sqlite3.connect(path)
+@app.route('/new/product', methods=['POST'])  
+def create_product():  
+    new_product = {  
+        "product": request.json['product'],  
+        "categorie": request.json["categorie"],  
+        "price": request.json['price']  
+    }  
+    shop.append(new_product)  
+    con = sqlite3.connect(path)  
 
-    cur = con.cursor()
-    cur.execute("""INSERT INTO all_products(products,price,categorie)
-                VALUES(?,?,?) """, (new_product['product'], new_product['price'], new_product['categorie']))
-    if new_product['categorie'] == "gym":
-        cur.execute("""INSERT INTO gym_products(product.price)
-                    VALUES(?,?) """, (new_product['product'], new_product['price']))
-    con.commit()
-    con.close()
-    return jsonify(new_product), 201
+    cur = con.cursor()  
+    cur.execute("""SELECT id FROM categorie WHERE categorie=? """, (new_product['categorie'],))  
+    category = cur.fetchone()  
+
+    if category is None:  
+        return jsonify({"message": "not found any"}), 404  
+
+    category_id = category[0]   
+    cur.execute("""INSERT INTO all_products(product, price, categorie_id)  
+                   VALUES(?, ?, ?)""", (new_product['product'], new_product['price'], category_id))  
+    
+    con.commit()  
+    con.close()  
+    return "create succesfully",201
+    
 
 
 @app.route('/shop/programing', methods=['GET'])
@@ -85,9 +94,24 @@ def get_gym_product():
     ]
     return jsonify(gym_product)
 
+@app.route('/get/product/<string:category>', methods = ['GET'])
+def get_product_by_categorie(category):
+
+    con = sqlite3.connect(path)
+
+    cur = con.cursor()
+    cur.execute("""SELECT product,price FROM all_products
+                WHERE categorie_id = (SELECT id FROM categorie WHERE categorie = ?) """,(category,))
+    products=cur.fetchall()
+    product_list=[{"products" : product[0], "price" : product[1] } for product in products ] 
+    con.close()
+    return jsonify(product_list)
+    
+
 
 @app.route('/shop/update', methods=['PUT'])
 def update_product():
+
     product_name = request.json['product']
     product_to_update = next(
         (product for product in shop if product['product'] == product_name), None)
