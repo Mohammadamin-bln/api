@@ -226,7 +226,7 @@ def update_product():
         return jsonify({"message": "Product not found"}), 404
 
 
-@app.route('/product/delete', method=['DELETE'])
+@app.route('/product/delete', methods=['DELETE'])
 def product_delete():
     """  
   Delete an existing product  
@@ -259,12 +259,53 @@ def product_delete():
         if product is None:
             return jsonify({"message": "product not found "}), 404
         cur.execute(
-            """DELETE FROM  all_products WHERE product=? """, (product_name))
+            """DELETE FROM  all_products WHERE product=? """, (product_name,))
         con.commit()
         return jsonify({"message": "product deleted succesfully"}), 200
     except Error as e:
         print(e)
-        return jsonify({"message ": " somthing went wrong "})
+        return jsonify({"message ": " somthing went wrong "}), 404
+    finally:
+        con.close()
+
+
+@app.route('/category/delete', methods=['DELETE'])
+def categorie_delete():
+    """  
+Delete an existing category  
+---  
+parameters:  
+  - name: category 
+    in: body  
+    required: true  
+    schema:  
+      type: object  
+      properties:  
+        category:  
+          type: string  
+
+responses:  
+  200:  
+    description: category deleted successfully  
+  404:  
+    description: category not found  
+"""
+    try:
+        con = sqlite3.connect(path)
+        cur = con.cursor()
+        categorie_name = request.json['categorie']
+        cur.execute("""SELECT ID FROM categorie WHERE categorie=? """,
+                    (categorie_name,))
+        category = cur.fetchone()
+        if category is None:
+            return jsonify({"message ": "this category not exist"}), 404
+        cur.execute("""DELETE FROM categorie  WHERE categorie=? """,
+                    (categorie_name,))
+        con.commit()
+        return jsonify({"message": "category deleted succesfully"}), 200
+    except Error as e:
+        print(e)
+        return jsonify({"message": "somthing went wrong "}), 404
     finally:
         con.close()
 
