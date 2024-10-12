@@ -1,33 +1,36 @@
 from flask import Flask, request, jsonify
-import sqlite3
-from sqlite3 import Error
+import psycopg2
+from psycopg2 import sql, Error
 from flasgger import Swagger
 
-path = "products.db"
 app = Flask(__name__)
 swagger = Swagger(app)
 
-shop = []
-categorie = [{}]
+# PostgreSQL connection parameters
+DATABASE_URL = "postgresql://root:KlOqbfpQFZIPh1wkniMbGvGk@grande-casse.liara.cloud:33563/postgres"
 
-try:
-    con = sqlite3.connect(path)
+# Initialize the database
+def init_db():
+    try:
+        con = psycopg2.connect(DATABASE_URL)
+        cur = con.cursor()
 
-    cur = con.cursor()
+        cur.execute("""CREATE TABLE IF NOT EXISTS categorie(  
+                    id SERIAL PRIMARY KEY, categorie TEXT)""")
 
-    cur.execute("""CREATE TABLE IF NOT EXISTS categorie(  
-                id INTEGER PRIMARY KEY AUTOINCREMENT, categorie TEXT)""")
+        cur.execute("""CREATE TABLE IF NOT EXISTS all_products  
+                    (product TEXT, price INTEGER, categorie_id INTEGER,   
+                    FOREIGN KEY(categorie_id) REFERENCES categorie(id)) """)
+        
+        con.commit()
+    except Error as e:
+        print(e)
+    finally:
+        if con:
+            cur.close()
+            con.close()
 
-    cur.execute("""CREATE TABLE IF NOT EXISTS all_products  
-                (product TEXT, price INTEGER, categorie_id INTEGER,   
-                FOREIGN KEY(categorie_id) REFERENCES categorie(id)) """)
-
-    con.commit()
-except Error:
-    print(Error)
-finally:
-    con.close()
-
+init_db()
 
 @app.route('/category/get_all', methods=['GET'])
 def get_product():
@@ -48,18 +51,19 @@ def get_product():
                 type: string  
     """
     try:
-        con = sqlite3.connect(path)
-
+        con = psycopg2.connect(DATABASE_URL)
         cur = con.cursor()
-        cur.execute("""SELECT id,categorie FROM categorie """)
+        cur.execute("SELECT id, categorie FROM categorie")
         categories = cur.fetchall()
-        categories_list = [{"id": category[0], "categorie": category[1]}
-                           for category in categories]
+        categories_list = [{"id": category[0], "categorie": category[1]} for category in categories]
 
         return jsonify(categories_list)
-    except Error:
-        print(Error)
-
+    except Error as e:
+        print(e)
+    finally:
+        if con:
+            cur.close()
+            con.close()
 
 @app.route('/category/create', methods=["POST"])
 def create_categorie():
@@ -89,20 +93,19 @@ def create_categorie():
     new_categorie = {
         "categorie": request.json['categorie']
     }
-    categorie.append(new_categorie)
     try:
-        con = sqlite3.connect(path)
-
+        con = psycopg2.connect(DATABASE_URL)
         cur = con.cursor()
-        cur.execute("""INSERT INTO categorie(categorie)  
-                    VALUES(?)""", (new_categorie['categorie'],))
+        cur.execute("INSERT INTO categorie(categorie) VALUES(%s) RETURNING id", (new_categorie['categorie'],))
+        new_categorie['id'] = cur.fetchone()[0]
         con.commit()
-    except Error:
-        print(Error)
+    except Error as e:
+        print(e)
     finally:
-        con.close()
+        if con:
+            cur.close()
+            con.close()
         return jsonify(new_categorie), 201
-
 
 @app.route('/product/add', methods=['POST'])
 def create_product():
@@ -131,25 +134,26 @@ def create_product():
         "categorie": request.json["categorie"],
         "price": request.json['price']
     }
-    shop.append(new_product)
-    con = sqlite3.connect(path)
+    try:
+        con = psycopg2.connect(DATABASE_URL)
+        cur = con.cursor()
+        cur.execute("SELECT id FROM categorie WHERE categorie=%s", (new_product['categorie'],))
+        category = cur.fetchone()
 
-    cur = con.cursor()
-    cur.execute("""SELECT id FROM categorie WHERE categorie=? """,
-                (new_product['categorie'],))
-    category = cur.fetchone()
+        if category is None:
+            return jsonify({"message": "Category not found"}), 404
 
-    if category is None:
-        return jsonify({"message": "Category not found"}), 404
-
-    category_id = category[0]
-    cur.execute("""INSERT INTO all_products(product, price, categorie_id)  
-                   VALUES(?, ?, ?)""", (new_product['product'], new_product['price'], category_id))
-
-    con.commit()
-    con.close()
+        category_id = category[0]
+        cur.execute("INSERT INTO all_products(product, price, categorie_id) VALUES(%s, %s, %s)", 
+                    (new_product['product'], new_product['price'], category_id))
+        con.commit()
+    except Error as e:
+        print(e)
+    finally:
+        if con:
+            cur.close()
+            con.close()
     return jsonify({"message": "Product created successfully"}), 201
-
 
 @app.route('/get/product/<string:category>', methods=['GET'])
 def get_product_by_categorie(category):
@@ -176,17 +180,20 @@ def get_product_by_categorie(category):
       404:  
         description: Category not found  
     """
-    con = sqlite3.connect(path)
-
-    cur = con.cursor()
-    cur.execute("""SELECT product,price FROM all_products  
-                WHERE categorie_id = (SELECT id FROM categorie WHERE categorie = ?) """, (category,))
-    products = cur.fetchall()
-    product_list = [{"product": product[0], "price": product[1]}
-                    for product in products]
-    con.close()
-    return jsonify(product_list)
-
+    try:
+        con = psycopg2.connect(DATABASE_URL)
+        cur = con.cursor()
+        cur.execute("""SELECT product, price FROM all_products  
+                    WHERE categorie_id = (SELECT id FROM categorie WHERE categorie = %s)""", (category,))
+        products = cur.fetchall()
+        product_list = [{"product": product[0], "price": product[1]} for product in products]
+        return jsonify(product_list)
+    except Error as e:
+        print(e)
+    finally:
+        if con:
+            cur.close()
+            con.close()
 
 @app.route('/update/product', methods=['PUT'])
 def update_product():
@@ -213,102 +220,112 @@ def update_product():
         description: Product not found  
     """
     product_name = request.json['product']
-    product_to_update = next(
-        (product for product in shop if product['product'] == product_name), None)
+    try:
+        con = psycopg2.connect(DATABASE_URL)
+        cur = con.cursor()
+        cur.execute("SELECT * FROM all_products WHERE product=%s", (product_name,))
+        product = cur.fetchone()
 
-    if product_to_update:
-        product_to_update['categorie'] = request.json.get(
-            'categorie', product_to_update['categorie'])
-        product_to_update['price'] = request.json.get(
-            'price', product_to_update['price'])
-        return jsonify({"message": "Product updated", "product": product_to_update}), 200
-    else:
-        return jsonify({"message": "Product not found"}), 404
+        if product:
+            updated_categorie = request.json.get('categorie', product[2])
+            updated_price = request.json.get('price', product[1])
 
+            cur.execute("UPDATE all_products SET categorie_id=(SELECT id FROM categorie WHERE categorie=%s), price=%s WHERE product=%s",
+                        (updated_categorie, updated_price, product_name))
+            con.commit()
+            return jsonify({"message": "Product updated"}), 200
+        else:
+            return jsonify({"message": "Product not found"}), 404
+    except Error as e:
+        print(e)
+    finally:
+        if con:
+            cur.close()
+            con.close()
 
 @app.route('/product/delete', methods=['DELETE'])
 def product_delete():
     """  
-  Delete an existing product  
-  ---  
-  parameters:  
-    - name: product  
-      in: body  
-      required: true  
-      schema:  
-        type: object  
-        properties:  
-          product:  
-            type: string  
+    Delete an existing product  
+    ---  
+    parameters:  
+      - name: product  
+        in: body  
+        required: true  
+        schema:  
+          type: object  
+          properties:  
+            product:  
+              type: string  
 
-  responses:  
-    200:  
-      description: Product deleted successfully  
-    404:  
-      description: Product not found  
-  """
+    responses:  
+      200:  
+        description: Product deleted successfully  
+      404:  
+        description: Product not found  
+    """
     try:
-        con = sqlite3.connect(path)
+        con = psycopg2.connect(DATABASE_URL)
         cur = con.cursor()
-
         product_name = request.json['product']
-        cur.execute("""SELECT id FROM  all_products WHERE  product=?
-                    """, product_name,)
+        cur.execute("SELECT id FROM all_products WHERE product=%s", (product_name,))
         product = cur.fetchone()
 
         if product is None:
-            return jsonify({"message": "product not found "}), 404
-        cur.execute(
-            """DELETE FROM  all_products WHERE product=? """, (product_name,))
+            return jsonify({"message": "Product not found"}), 404
+
+        cur.execute("DELETE FROM all_products WHERE product=%s", (product_name,))
         con.commit()
-        return jsonify({"message": "product deleted succesfully"}), 200
+        return jsonify({"message": "Product deleted successfully"}), 200
     except Error as e:
         print(e)
-        return jsonify({"message ": " somthing went wrong "}), 404
+        return jsonify({"message": "Something went wrong"}), 500
     finally:
-        con.close()
-
+        if con:
+            cur.close()
+            con.close()
 
 @app.route('/category/delete', methods=['DELETE'])
 def categorie_delete():
     """  
-Delete an existing category  
----  
-parameters:  
-  - name: category 
-    in: body  
-    required: true  
-    schema:  
-      type: object  
-      properties:  
-        category:  
-          type: string  
+    Delete an existing category  
+    ---  
+    parameters:  
+      - name: category 
+        in: body  
+        required: true  
+        schema:  
+          type: object  
+          properties:  
+            category:  
+              type: string  
 
-responses:  
-  200:  
-    description: category deleted successfully  
-  404:  
-    description: category not found  
-"""
+    responses:  
+      200:  
+        description: Category deleted successfully  
+      404:  
+        description: Category not found  
+    """
     try:
-        con = sqlite3.connect(path)
+        con = psycopg2.connect(DATABASE_URL)
         cur = con.cursor()
         categorie_name = request.json['categorie']
-        cur.execute("""SELECT ID FROM categorie WHERE categorie=? """,
-                    (categorie_name,))
+        cur.execute("SELECT id FROM categorie WHERE categorie=%s", (categorie_name,))
         category = cur.fetchone()
+
         if category is None:
-            return jsonify({"message ": "this category not exist"}), 404
-        cur.execute("""DELETE FROM categorie  WHERE categorie=? """,
-                    (categorie_name,))
+            return jsonify({"message": "This category does not exist"}), 404
+
+        cur.execute("DELETE FROM categorie WHERE categorie=%s", (categorie_name,))
         con.commit()
-        return jsonify({"message": "category deleted succesfully"}), 200
+        return jsonify({"message": "Category deleted successfully"}), 200
     except Error as e:
         print(e)
-        return jsonify({"message": "somthing went wrong "}), 404
+        return jsonify({"message": "Something went wrong"}), 500
     finally:
-        con.close()
-
+        if con:
+            cur.close()
+            con.close()
 
 if __name__ == "__main__":
     app.run()
